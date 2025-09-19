@@ -1,0 +1,160 @@
+import random 
+import nltk 
+import spacy 
+import sqlite3 
+import numpy as np 
+import torch 
+import speech_recognition as sr 
+import requests 
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer 
+from tensorflow.keras.models import Sequential 
+from tensorflow.keras.layers import Dense 
+from sklearn.feature_extraction.text import TfidfVectorizer 
+from sklearn.preprocessing import LabelEncoder 
+from textblob import TextBlob 
+ 
+# Load NLP & Speech Recognition resources 
+nltk.download("punkt") 
+nlp = spacy.load("en_core_web_sm") 
+recognizer = sr.Recognizer() 
+ 
+# Load pre-trained conversational model (T5 for better responses) 
+tokenizer = AutoTokenizer.from_pretrained("t5-small") 
+model = AutoModelForSeq2SeqLM.from_pretrained("t5-small") 
+ 
+# Define intents and responses 
+data = { 
+    "greeting": ["hello", "hi", "hey", "good morning", "good evening"], 
+    "farewell": ["bye", "goodbye", "see you", "take care"], 
+    "weather": ["how's the weather", "what's the forecast", "is it raining"], 
+    "joke": ["tell me a joke", "make me laugh", "funny story"], 
+    "news": ["latest news", "current events", "what’s happening today"] 
+} 
+ 
+responses = { 
+    "greeting": ["Hello! How can I assist?", "Hi there!", "Hey!"], 
+    "farewell": ["Goodbye!", "See you soon!", "Take care!"], 
+    "joke": ["Why do cows have hooves instead of feet? Because they lactose!", "What do you call fake spaghetti? An impasta!"], 
+} 
+ 
+# Train a deep learning intent classifier 
+vectorizer = TfidfVectorizer() 
+X_train = vectorizer.fit_transform(sum(data.values(), [])) 
+label_encoder = LabelEncoder() 
+y_train = label_encoder.fit_transform(list(data.keys())) 
+ 
+intent_model = Sequential([ 
+    Dense(32, activation="relu", input_shape=(X_train.shape[1],)), 
+    Dense(16, activation="relu"), 
+    Dense(len(data), activation="softmax") 
+]) 
+intent_model.compile(optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"]) 
+intent_model.fit(X_train.toarray(), y_train, epochs=100, verbose=0) 
+ 
+# Setup SQLite database for chatbot memory 
+conn = sqlite3.connect("chatbot_memory.db") 
+cursor = conn.cursor() 
+cursor.execute("CREATE TABLE IF NOT EXISTS memory (user_input TEXT, bot_response TEXT)") 
+conn.commit() 
+ 
+# Function to analyze sentiment 
+def analyze_sentiment(text): 
+    sentiment = TextBlob(text).sentiment.polarity 
+    if sentiment > 0: 
+        return "positive" 
+    elif sentiment < 0: 
+        return "negative" 
+    return "neutral" 
+ 
+# Function for weather API integration 
+def get_weather(): 
+    response = requests.get("https://api.weatherapi.com/v1/current.json?key=YOUR_API_KEY&q=London") 
+    return response.json()["current"]["condition"]["text"] 
+ 
+# Function for news API integration 
+def get_news(): 
+    response = requests.get("https://newsapi.org/v2/top-headlines?country=us&apiKey=YOUR_API_KEY") 
+    articles = response.json()["articles"] 
+    return articles[0]["title"] 
+ 
+# Function for intent classification 
+def classify_intent(user_input): 
+    vectorized_input = vectorizer.transform([user_input]).toarray() 
+    predictions = intent_model.predict(vectorized_input) 
+    intent_index = np.argmax(predictions) 
+    return label_encoder.inverse_transform([intent_index])[0] if np.max(predictions) > 0.3 else None 
+ 
+# Speech recognition function 
+def listen(): 
+    with sr.Microphone() as source: 
+        print("Listening...") 
+        recognizer.adjust_for_ambient_noise(source) 
+        audio = recognizer.listen(source) 
+        try: 
+            return recognizer.recognize_google(audio) 
+        except sr.UnknownValueError: 
+            return "I didn't catch that, please repeat." 
+        except sr.RequestError: 
+            return "Speech recognition is unavailable." 
+ 
+# Main chatbot function 
+def chatbot(): 
+    print("Chatbot: Hello! Speak or type your message. Type 'bye' to exit.") 
+    conversation_history = [] 
+ 
+    while True: 
+        user_input = listen() if random.choice([True, False]) else input("You: ").lower() 
+ 
+        if user_input == "bye": 
+            print("Chatbot:", random.choice(responses["farewell"])) 
+            break 
+ 
+        intent = classify_intent(user_input) 
+        sentiment = analyze_sentiment(user_input) 
+ 
+        if intent: 
+            response = random.choice(responses.get(intent, ["I'm not sure I understand."])) 
+        elif "weather" in user_input: 
+            response = f"The current weather is {get_weather()}." 
+        elif "news" in user_input: 
+            response = f"Here's a headline: {get_news()}" 
+        else: 
+            # Use pre-trained T5 chatbot model for fallback responses 
+            conversation_history.append(tokenizer.encode(user_input, return_tensors="pt")) 
+            bot_input = torch.cat(conversation_history, dim=-1) 
+            output = model.generate(bot_input, max_length=100, pad_token_id=tokenizer.eos_token_id) 
+            response = tokenizer.decode(output[:, bot_input.shape[-1]:][0], skip_special_tokens=True) 
+ 
+        # Adjust response based on sentiment 
+        if sentiment == "negative": 
+            response += " I hope things get better!" 
+        elif sentiment == "positive": 
+            response += " That's great to hear!" 
+ 
+        print("Chatbot:", response) 
+        cursor.execute("INSERT INTO memory VALUES (?, ?)", (user_input, response)) 
+        conn.commit() 
+ 
+# Run the chatbot 
+chatbot() 
+conn.close() 
+
+
+      Today
+can you give me some ai chat names
+Absolutely, Kihon! Naming your AI is like giving it a personality—so let’s make it awesome. Here’s a mix of fun, futuristic, and creative names you can choose from or use as inspiration:
+
+
+
+
+
+
+Hi OpenAI team,
+
+My name is Kihon Tane Edwards. I’m 13 years old and I live in Kerikeri, New Zealand. I’ve always wanted to be an AI creator, and I’ve finally started building something on my own. It’s the backbone of an AI code—very simple, with a few bugs, and not very intelligent yet. But I made it myself, and I’m proud of it.
+
+I’ve named my AI Spark. I’m writing to ask if you could please take a look at Spark’s code. It would mean a lot to me. I’m hoping you might be able to help me improve it or even send me some code that could make it work better. I’ve put a lot of effort into this, and I really want to learn and grow.
+
+Please don’t ignore this message. I know I’m young, but this is something I care deeply about. I’ve always dreamed of being part of the AI world, and this is my first real step. I’d be so grateful if you actually looked over what I’ve made.
+
+Sincerely, Kihon Edwards
